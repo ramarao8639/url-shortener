@@ -1,4 +1,4 @@
-name: Build and Deploy to EKS
+name: Build and Deploy
 
 on:
   push:
@@ -16,7 +16,6 @@ env:
 
 jobs:
   build-and-deploy:
-
     runs-on: ubuntu-latest
 
     steps:
@@ -24,62 +23,8 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
-
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::809554585891:role/GitHubActions-EKS-DeployRole
-          aws-region: ${{ env.AWS_REGION }}
-
-
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-
-      - name: Build Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-
-          docker build \
-            -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
-            .
-
-
-      - name: Push Docker Image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-
-          docker push \
-            $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
-
-
-      - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \
-            --region ${{ env.AWS_REGION }} \
-            --name ${{ env.EKS_CLUSTER }}
-
-
-      - name: Deploy Application
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-
-        run: |
-          IMAGE_TAG=${{ github.sha }}
-
-          IMAGE=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
-
-          sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" \
-            k8s/app/deployment.yaml \
-            | kubectl apply -f -
-
-          kubectl rollout status \
-            deployment/url-shortener \
-            --timeout=5m
+          aws-region: ap-south-1
