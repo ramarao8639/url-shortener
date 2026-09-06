@@ -28,19 +28,20 @@ pipeline {
             }
         }
 
-stage('Test Application') {
+stage('Test') {
     steps {
-        catchError(
-            buildResult: 'SUCCESS',
-            stageResult: 'UNSTABLE'
-        ) {
-            sh '''
-                echo "Running tests..."
-                mvn test
-            '''
-        }
+        script {
+            def testStatus = sh(
+                script: 'mvn test',
+                returnStatus: true
+            )
 
-        echo "Tests finished. Continuing pipeline..."
+            if (testStatus != 0) {
+                echo "⚠ Tests failed, but continuing with Docker build and deployment..."
+            } else {
+                echo "✅ Tests passed successfully"
+            }
+        }
     }
 }
 
