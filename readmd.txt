@@ -1,0 +1,7 @@
+Dummy test deploy for both jenkins and github 
+
+with association of arg0cd as deployment monitoring for pods 
+
+
+Used AWS for EKS and ECR for regsitry 
+
