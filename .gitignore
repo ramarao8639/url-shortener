@@ -17,3 +17,12 @@ bin/
 # OS
 .DS_Store
 Thumbs.db
+
+
+current-deployment.yaml
+
+argocd-secret-patch.json
+
+cfn-template.json
+
+nodegroup-template.json
