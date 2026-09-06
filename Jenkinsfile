@@ -32,23 +32,17 @@ pipeline {
             }
         }
 
-        stage('Test') {
-            steps {
-                script {
-                    def testResult = sh(
-                        script: 'mvn test',
-                        returnStatus: true
-                    )
-
-                    if (testResult != 0) {
-                        echo "Tests failed, but continuing pipeline..."
-                    } else {
-                        echo "Tests passed successfully!"
-                    }
-                }
-            }
+       stage('Test') {
+    steps {
+        withEnv([
+            'SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/urlshortener',
+            'SPRING_DATASOURCE_USERNAME=postgres',
+            'SPRING_DATASOURCE_PASSWORD=root'
+        ]) {
+            sh 'mvn test'
         }
-
+    }
+}
         stage('Docker Build') {
             steps {
                 sh '''
