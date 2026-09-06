@@ -7,61 +7,62 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: url-shortener
-  EKS_CLUSTER: url-shortener-cluster
 
 jobs:
   build-and-deploy:
-
     runs-on: ubuntu-latest
+
+    # Prevent workflow from running again when it updates deployment.yaml
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
 
     steps:
 
-      # 1. Checkout code
+      # ---------------------------------
+      # 1. Checkout Code
+      # ---------------------------------
       - name: Checkout source code
         uses: actions/checkout@v4
 
-
+      # ---------------------------------
       # 2. Setup Java
-      - name: Set up JDK 21
+      # ---------------------------------
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
 
+      # ---------------------------------
+      # 3. Build Spring Boot Application
+      # ---------------------------------
+      - name: Build Application
+        run: mvn clean install -DskipTests
 
-      # 3. Build Spring Boot application
-      - name: Build application
-        run: |
-          mvn clean install -DskipTests
-
-
-      # 4. Configure AWS using OIDC
+      # ---------------------------------
+      # 4. Configure AWS Credentials
+      # ---------------------------------
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::809554585891:role/GitHubActions-UrlShortener-OIDC
+          role-to-assume: arn:aws:iam::809554585891:role/GitHubActions-EKS-DeployRole
           aws-region: ap-south-1
 
-
-      # 5. Verify AWS identity
-      - name: Verify AWS Identity
-        run: |
-          aws sts get-caller-identity
-
-
-      # 6. Login to Amazon ECR
+      # ---------------------------------
+      # 5. Login to Amazon ECR
+      # ---------------------------------
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-
-      # 7. Build Docker image
+      # ---------------------------------
+      # 6. Build Docker Image
+      # ---------------------------------
       - name: Build Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -73,8 +74,9 @@ jobs:
             -t $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG \
             .
 
-
-      # 8. Push Docker image
+      # ---------------------------------
+      # 7. Push Docker Image to ECR
+      # ---------------------------------
       - name: Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -85,17 +87,10 @@ jobs:
           docker push \
             $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
 
-
-      # 9. Configure kubectl
-      - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \
-            --region ${{ env.AWS_REGION }} \
-            --name ${{ env.EKS_CLUSTER }}
-
-
-      # 10. Deploy application to EKS
-      - name: Deploy Application
+      # ---------------------------------
+      # 8. Update Kubernetes Manifest
+      # ---------------------------------
+      - name: Update Deployment Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
 
@@ -104,10 +99,22 @@ jobs:
 
           IMAGE=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
 
-          sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" \
-            k8s/app/deployment.yaml \
-            | kubectl apply -f -
+          sed -i "s|image: .*url-shortener.*|image: $IMAGE|g" \
+            k8s/app/deployment.yaml
 
-          kubectl rollout status \
-            deployment/url-shortener \
-            --timeout=5m
+          echo "Updated image:"
+          grep "image:" k8s/app/deployment.yaml
+
+      # ---------------------------------
+      # 9. Commit Updated Manifest
+      # ---------------------------------
+      - name: Commit and Push Image Update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/app/deployment.yaml
+
+          git commit -m "Update Kubernetes image to ${{ github.sha }} [skip ci]" || echo "No changes to commit"
+
+          git push origin main
