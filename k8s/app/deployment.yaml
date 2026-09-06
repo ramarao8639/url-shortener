@@ -19,7 +19,7 @@ spec:
       containers:
         - name: url-shortener
 
-          image: 809554585891.dkr.ecr.ap-south-1.amazonaws.com/url-shortener:5fb9a77d193242cb03c88971297f9f534a6a244a
+          image: 809554585891.dkr.ecr.ap-south-1.amazonaws.com/url-shortener:b20d52d129a3f5cddc1b13affa3b34568922cb46
 
           imagePullPolicy: Always
 
