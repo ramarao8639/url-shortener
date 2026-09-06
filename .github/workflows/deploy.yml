@@ -7,49 +7,49 @@ on:
 
 permissions:
   id-token: write
-  contents: read
+  contents: write
 
 env:
   AWS_REGION: ap-south-1
   ECR_REPOSITORY: url-shortener
-  EKS_CLUSTER: url-shortener-cluster
 
 jobs:
   build-and-deploy:
-
     runs-on: ubuntu-latest
 
     steps:
 
-      # 1. Checkout code
+      # 1. Checkout source code
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
 
       # 2. Setup Java
-      - name: Set up JDK 21
+      - name: Set up JDK
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: "21"
           cache: maven
 
 
       # 3. Build Spring Boot application
-      - name: Build application
+      - name: Build Application
         run: |
           mvn clean install -DskipTests
 
 
-      # 4. Configure AWS using OIDC
+      # 4. Configure AWS Credentials using OIDC
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::809554585891:role/GitHubActions-UrlShortener-OIDC
-          aws-region: ap-south-1
+          role-to-assume: arn:aws:iam::809554585891:role/GitHubActions-EKS-DeployRole
+          aws-region: ${{ env.AWS_REGION }}
 
 
-      # 5. Verify AWS identity
+      # 5. Verify AWS Identity
       - name: Verify AWS Identity
         run: |
           aws sts get-caller-identity
@@ -61,7 +61,7 @@ jobs:
         uses: aws-actions/amazon-ecr-login@v2
 
 
-      # 7. Build Docker image
+      # 7. Build Docker Image
       - name: Build Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -74,7 +74,7 @@ jobs:
             .
 
 
-      # 8. Push Docker image
+      # 8. Push Docker Image to ECR
       - name: Push Docker Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -86,28 +86,34 @@ jobs:
             $ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
 
 
-      # 9. Configure kubectl
-      - name: Configure kubectl
-        run: |
-          aws eks update-kubeconfig \
-            --region ${{ env.AWS_REGION }} \
-            --name ${{ env.EKS_CLUSTER }}
-
-
-      # 10. Deploy application to EKS
-      - name: Deploy Application
+      # 9. Update Image in Kubernetes Manifest
+      - name: Update Kubernetes Image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
 
         run: |
           IMAGE_TAG=${{ github.sha }}
-
           IMAGE=$ECR_REGISTRY/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG
 
-          sed "s|IMAGE_PLACEHOLDER|$IMAGE|g" \
-            k8s/app/deployment.yaml \
-            | kubectl apply -f -
+          echo "Updating image to: $IMAGE"
 
-          kubectl rollout status \
-            deployment/url-shortener \
-            --timeout=5m
+          sed -i "s|image: .*|image: $IMAGE|g" k8s/app/deployment.yaml
+
+          echo "Updated deployment.yaml:"
+          cat k8s/app/deployment.yaml
+
+
+      # 10. Commit Updated Kubernetes Manifest
+      - name: Commit and Push Kubernetes Manifest
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add k8s/app/deployment.yaml
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update Kubernetes image to ${{ github.sha }}"
+            git push origin main
+          fi
