@@ -39,26 +39,12 @@ pipeline {
             'SPRING_DATASOURCE_USERNAME=postgres',
             'SPRING_DATASOURCE_PASSWORD=root'
         ]) {
-            script {
-                sh '''
-                    echo "================================"
-                    echo "JENKINS DATABASE TEST"
-                    echo "================================"
-                    echo "DATABASE URL: $SPRING_DATASOURCE_URL"
-                    echo "DATABASE USER: $SPRING_DATASOURCE_USERNAME"
-                '''
+            sh '''
+                echo "Running tests using local PostgreSQL..."
+                echo "Database URL: $SPRING_DATASOURCE_URL"
 
-                def testResult = sh(
-                    script: 'mvn test',
-                    returnStatus: true
-                )
-
-                if (testResult == 0) {
-                    echo "TESTS PASSED!"
-                } else {
-                    echo "TESTS FAILED, BUT PIPELINE WILL CONTINUE!"
-                }
-            }
+                mvn test
+            '''
         }
     }
 }
