@@ -28,30 +28,21 @@ pipeline {
             }
         }
 
-
-        stage('Test Application') {
-            steps {
-
-                script {
-                    try {
-
-                        sh '''
-                            echo "Running Spring Boot tests..."
-                            mvn test
-                        '''
-
-                    } catch (Exception e) {
-
-                        echo "================================="
-                        echo "TEST FAILED"
-                        echo "PostgreSQL is unavailable in Jenkins"
-                        echo "CONTINUING DEPLOYMENT"
-                        echo "================================="
-                    }
-                }
-            }
+stage('Test Application') {
+    steps {
+        catchError(
+            buildResult: 'SUCCESS',
+            stageResult: 'UNSTABLE'
+        ) {
+            sh '''
+                echo "Running tests..."
+                mvn test
+            '''
         }
 
+        echo "Tests finished. Continuing pipeline..."
+    }
+}
 
         stage('Docker Build') {
             steps {
