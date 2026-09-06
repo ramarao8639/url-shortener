@@ -16,9 +16,13 @@ pipeline {
         stage('Checkout') {
             steps {
                 checkout scm
+
+                sh '''
+                    echo "Source code checkout successful"
+                    git log -1 --oneline
+                '''
             }
         }
-
 
         stage('Build Application') {
             steps {
@@ -28,48 +32,42 @@ pipeline {
             }
         }
 
-stage('Test') {
-    steps {
-        script {
-            def testStatus = sh(
-                script: 'mvn test',
-                returnStatus: true
-            )
+        stage('Test') {
+            steps {
+                script {
+                    def testResult = sh(
+                        script: 'mvn test',
+                        returnStatus: true
+                    )
 
-            if (testStatus != 0) {
-                echo "⚠ Tests failed, but continuing with Docker build and deployment..."
-            } else {
-                echo "✅ Tests passed successfully"
+                    if (testResult != 0) {
+                        echo "Tests failed, but continuing pipeline..."
+                    } else {
+                        echo "Tests passed successfully!"
+                    }
+                }
             }
         }
-    }
-}
 
         stage('Docker Build') {
             steps {
                 sh '''
-                    echo "Building Docker image..."
-
-                    docker build \
-                      -t $IMAGE_NAME \
-                      .
+                    docker build -t $IMAGE_NAME .
                 '''
             }
         }
-
 
         stage('Login to AWS ECR') {
             steps {
                 sh '''
                     aws ecr get-login-password \
-                      --region $AWS_REGION \
-                    | docker login \
-                      --username AWS \
-                      --password-stdin $ECR_REGISTRY
+                    --region $AWS_REGION | \
+                    docker login \
+                    --username AWS \
+                    --password-stdin $ECR_REGISTRY
                 '''
             }
         }
-
 
         stage('Push Docker Image') {
             steps {
@@ -79,7 +77,6 @@ stage('Test') {
             }
         }
 
-
         stage('Update Kubernetes Deployment') {
             steps {
                 sh '''
@@ -87,16 +84,14 @@ stage('Test') {
                     "s|image: .*url-shortener:.*|image: $IMAGE_NAME|g" \
                     k8s/app/deployment.yaml
 
-                    echo "Updated Image:"
+                    echo "Updated image:"
                     grep "image:" k8s/app/deployment.yaml
                 '''
             }
         }
 
-
         stage('Push Deployment Update to GitHub') {
             steps {
-
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'github-url-shortener',
@@ -111,68 +106,45 @@ stage('Test') {
 
                         git add k8s/app/deployment.yaml
 
-                        git commit -m "Deploy image $IMAGE_NAME" \
-                        || echo "No changes to commit"
+                        git commit -m "Deploy image $IMAGE_NAME" || true
 
                         git push \
                         https://$GITHUB_USER:$GITHUB_TOKEN@github.com/ramarao8639/url-shortener.git \
-                        main
+                        HEAD:main
                     '''
                 }
             }
         }
 
-
-        stage('Wait for ArgoCD') {
+        stage('Wait for ArgoCD Sync') {
             steps {
                 sh '''
-                    echo "Waiting for ArgoCD..."
-
+                    echo "Waiting for ArgoCD to detect Git changes..."
                     sleep 30
                 '''
             }
         }
 
-
         stage('Deployment Complete') {
             steps {
                 sh '''
-                    echo "===================================="
-                    echo "DEPLOYMENT PIPELINE COMPLETED"
-                    echo "===================================="
-
-                    echo "Image deployed:"
-                    echo $IMAGE_NAME
+                    echo "========================================="
+                    echo "PIPELINE COMPLETED"
+                    echo "========================================="
+                    echo "Image deployed: $IMAGE_NAME"
+                    echo "ArgoCD should sync the new deployment."
                 '''
             }
         }
     }
 
-
     post {
-
         success {
-            echo '''
-====================================
-
-SUCCESS
-
-Build completed
-Docker image pushed to ECR
-GitOps manifest updated
-
-ArgoCD can now deploy the new version.
-
-====================================
-'''
+            echo 'BUILD AND DEPLOYMENT SUCCESSFUL!'
         }
 
         failure {
-            echo '''
-Pipeline failed because of a critical error.
-
-Check the failed Jenkins stage.
-'''
+            echo 'Pipeline failed!'
         }
     }
 }
