@@ -22,13 +22,9 @@ jobs:
 
     steps:
 
-<<<<<<< HEAD
       # ---------------------------------
       # 1. Checkout Code
       # ---------------------------------
-=======
-      # 1. Checkout source code
->>>>>>> 69f6ecd5ea79a259786a762d7d6cf055879a0f00
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
